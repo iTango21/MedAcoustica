@@ -1,19 +1,13 @@
 import requests
 from bs4 import BeautifulSoup
-import lxml
 
-import json
-
+from scrapeproxies import getproxies
 from fake_useragent import UserAgent
-# from random import randrange
-ua = UserAgent()
-ua_ = ua.random
-
 
 import logging
 import time
-
 import re
+import json
 
 import openpyxl
 
@@ -21,6 +15,9 @@ excel_file = openpyxl.load_workbook('2022.xlsx')
 employees_sheet = excel_file['Worksheet']
 currently_active_sheet = excel_file.active
 cell_obj = employees_sheet.cell(row=1, column=1)
+
+ua = UserAgent()
+ua_ = ua.random
 
 headers = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
@@ -40,11 +37,45 @@ logger = logging.getLogger(__name__)
 logger = logging.LoggerAdapter(logger, {"app": "barmer-kliniksuche.de"})
 logger.info(f"Start programm... === {all_start_time} ===")
 
-print('start...')
+proxylist = []
+proxy = []
 
+
+def get_proxy():
+    global proxylist, proxy
+
+    proxylist = getproxies()
+    logger.info(f'Found: {len(proxylist)} proxys.')
+    proxy = proxylist[0]
+
+get_proxy()
+
+def chek_proxy(p__):
+    global proxy
+
+    tr_ = False
+    try:
+        requests.get('https://httpbin.org/ip', headers=headers, proxies={'http': p__, 'https': p__}, timeout=2)
+        tr_ = True
+    except:
+        pass
+
+    if tr_:
+        pass
+    else:
+        logger.info('PROXY ERROR!!!')
+        get_proxy()
+        for i, p_ in enumerate(proxylist):
+            try:
+                r = requests.get('https://httpbin.org/ip', headers=headers, proxies={'http': p_, 'https': p_},
+                                 timeout=2)
+                logger.info(f'{i} PROXY: {p_} --->>> success! there is access...')
+                proxy = p_
+                break
+            except:
+                logger.info(f'{i} PROXY: {p_} --->>> timeout expired!')
 
 url = 'https://www.barmer-kliniksuche.de/'
-
 
 client = requests.session()
 
@@ -61,12 +92,10 @@ cookies = {
 all_info = []
 
 for i in range(2, 12900):
+    chek_proxy(proxy)
     plz_ = f'{employees_sheet[f"C{i}"].value}'
-    print(f'{plz_} - - - - - - - >>>')
     logger.info(f'{plz_} - - - - - - - >>>')
     start_time = time.time()
-    # print(f'{employees_sheet[f"C{i}"].value}')
-    # fl.writelines(str() + "\n")
 
     headers = {
         'authority': 'www.barmer-kliniksuche.de',
@@ -101,15 +130,17 @@ for i in range(2, 12900):
         'searchcontrol[limit_num]': '50',
     }
 
-    response = requests.get('https://www.barmer-kliniksuche.de/api/hospitals', params=params, cookies=cookies, headers=headers)
-    # response = requests.get('https://www.barmer-kliniksuche.de/api/autocompletion/locations', params=params,
-    #                         cookies=cookies, headers=headers)
-    print(response.text)
-    aaa = json.loads(response.text)
+    response = requests.get('https://www.barmer-kliniksuche.de/api/hospitals',\
+        params=params,\
+        cookies=cookies,\
+        headers=headers,\
+        proxies={'http': proxy, 'https': proxy})
 
+    aaa = json.loads(response.text)
     plz_info = []
 
     for i in aaa["data"]:
+        chek_proxy(proxy)
         id_ = i["id"]
         name_ = i["name"]
         street_ = i["street"]
@@ -124,7 +155,7 @@ for i in range(2, 12900):
         lon_ = i["lon"]
         detailsUrl_ = i["detailsUrl"]
 
-        response = requests.get(url=detailsUrl_, cookies=cookies, headers=headers)
+        response = requests.get(url=detailsUrl_, cookies=cookies, headers=headers, proxies={'http': proxy, 'https': proxy})
         soup = BeautifulSoup(response.text, 'lxml')
         stand_der_daten = soup.find_all('div', class_='col-sm-6 col-xs-12')
         stand_der_daten__ = stand_der_daten[9].text
@@ -133,14 +164,15 @@ for i in range(2, 12900):
         p = re.compile('(uebersicht)')
         url_fachabteilungen = p.sub('fachabteilungen', detailsUrl_)
 
-        response = requests.get(url=url_fachabteilungen, cookies=cookies, headers=headers)
+        response = requests.get(url=url_fachabteilungen, cookies=cookies, headers=headers, proxies={'http': proxy, 'https': proxy})
         soup = BeautifulSoup(response.text, 'lxml')
         stand_der_daten = soup.find_all('a', class_='intern')
 
         fachabteilungen = []
         for i in stand_der_daten:
+            chek_proxy(proxy)
             url___ = f'https://www.barmer-kliniksuche.de/{i.get("href")}'
-            response = requests.get(url=url___, cookies=cookies, headers=headers)
+            response = requests.get(url=url___, cookies=cookies, headers=headers, proxies={'http': proxy, 'https': proxy})
             soup = BeautifulSoup(response.text, 'lxml')
             fachabteilung__ = soup.find('h2', class_='hospital_specialist_department').text
             fachabteilung_ = fachabteilung__.split(': ')[-1]
@@ -151,13 +183,10 @@ for i in range(2, 12900):
             p = re.compile('(uebersicht)')
             url_ambulante = p.sub('diagnosen-krankheiten-icd', url___)
 
-            response = requests.get(url=url_ambulante, cookies=cookies, headers=headers)
+            response = requests.get(url=url_ambulante, cookies=cookies, headers=headers, proxies={'http': proxy, 'https': proxy})
             soup = BeautifulSoup(response.text, 'lxml')
             krankheiten_all = soup.find_all('div', class_='row rowtable-data')
 
-            # len(krankheiten_all)
-
-            # Krankheiten
             krankheiten = []
 
             for m in krankheiten_all:
@@ -177,7 +206,7 @@ for i in range(2, 12900):
 
             p = re.compile('(uebersicht)')
             url_personal = p.sub('personal', url___)
-            response = requests.get(url=url_personal, cookies=cookies, headers=headers)
+            response = requests.get(url=url_personal, cookies=cookies, headers=headers, proxies={'http': proxy, 'https': proxy})
             soup = BeautifulSoup(response.text, 'lxml')
             bezeichnung_all = soup.find_all('div', class_='col-sm-6 col-xs-12 rowtable-title hyphenate')
             anzahl_all = soup.find_all('div', class_='col-sm-2 col-xs-12 rowtable-title hyphenate')
@@ -223,7 +252,6 @@ for i in range(2, 12900):
             }
         )
     finish_time = time.time() - start_time
-    print(f'{finish_time} = = = = = = = = =\n')
     logger.info(f'{finish_time} = = = = = = = = = OK!\n')
 
     all_info.append(

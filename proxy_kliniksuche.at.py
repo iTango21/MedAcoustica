@@ -3,6 +3,7 @@ import json
 
 import logging
 
+from scrapeproxies import getproxies
 from fake_useragent import UserAgent
 
 ua = UserAgent()
@@ -23,6 +24,44 @@ logger = logging.getLogger(__name__)
 logger = logging.LoggerAdapter(logger, {"app": "kliniksuche.at"})
 logger.info("Start programm...")
 
+proxylist = []
+proxy = []
+
+
+def get_proxy():
+    global proxylist, proxy
+
+    proxylist = getproxies()
+    logger.info(f'Found: {len(proxylist)} proxys.')
+    proxy = proxylist[0]
+
+get_proxy()
+
+def chek_proxy(p__):
+    global proxy
+
+    tr_ = False
+    try:
+        requests.get('https://httpbin.org/ip', headers=headers, proxies={'http': p__, 'https': p__}, timeout=2)
+        tr_ = True
+    except:
+        pass
+
+    if tr_:
+        pass
+    else:
+        logger.info('PROXY ERROR!!!')
+        get_proxy()
+        for i, p_ in enumerate(proxylist):
+            try:
+                r = requests.get('https://httpbin.org/ip', headers=headers, proxies={'http': p_, 'https': p_},
+                                 timeout=2)
+                logger.info(f'{i} PROXY: {p_} --->>> success! there is access...')
+                proxy = p_
+                break
+            except:
+                logger.info(f'{i} PROXY: {p_} --->>> timeout expired!')
+
 # PART 1
 #
 url1 = 'https://khstrukturdaten.goeg.at/backend2/KliniksucheV2/api/spitaeler?'
@@ -30,9 +69,11 @@ url1 = 'https://khstrukturdaten.goeg.at/backend2/KliniksucheV2/api/spitaeler?'
 types_ = ['Gemeinnütziges Krankenhaus', 'Privatkrankenhaus']
 
 with requests.Session() as session:
-    response = session.get(url=url1, headers=headers)
+    chek_proxy(proxy)
+    response = session.get(url=url1, headers=headers, proxies={'http': proxy, 'https': proxy})
 
     aaa = json.loads(response.text)
+
     logger.info(f'In {url1}\nFOUND: {len(aaa)} hospitals')
 
 hospital_info = []
@@ -47,7 +88,8 @@ for i in aaa:
     url2 = f'https://khstrukturdaten.goeg.at/backend2/KliniksucheV2/api/spitaeler/{nummer}'
 
     with requests.Session() as session:
-        response = session.get(url=url2, headers=headers)
+        chek_proxy(proxy)
+        response = session.get(url=url2, headers=headers, proxies={'http': proxy, 'https': proxy})
         bbb = json.loads(response.text)
 
         name_ = bbb['name']
@@ -79,7 +121,8 @@ for i in aaa:
             url3 = f'https://khstrukturdaten.goeg.at/backend2/KliniksucheV2/api/spitaeler/901/abteilungen/{id__}'
 
             with requests.Session() as session:
-                response = session.get(url=url3, headers=headers)
+                chek_proxy(proxy)
+                response = session.get(url=url3, headers=headers, proxies={'http': proxy, 'https': proxy})
                 ccc = json.loads(response.text)
 
             url_ccc = f'https://kliniksuche.at/klinik/901/abteilungen/{id__}'
@@ -168,7 +211,6 @@ for i in aaa:
 
             logger.info(f"{id__} --->>> OK!")
 
-
 with open(f'kliniksuchePart_1.json', 'w', encoding='utf-8') as file:
     json.dump(hospital_info, file, indent=4, ensure_ascii=False)
 
@@ -206,12 +248,16 @@ logger.info(f" = = = = = Diagnosen = = = = =\n\n")
 for k, v in set_data.items():
     url_p2 = f'https://kliniksuche.at/api/hospitals?treatment=20'
     diagnose_ = v
+
     with requests.Session() as session:
-        response = session.get(url=url_p2, headers=headers, verify=False)
+        chek_proxy(proxy)
+        response = session.get(url=url_p2, headers=headers, verify=False, proxies={'http': proxy, 'https': proxy})
 
     params = {
         'treatment': f'{k}',
     }
+
+    # response = requests.get('https://kliniksuche.at/api/hospitals', params=params, cookies=cookies, headers=headers)
 
     ppp = json.loads(response.text)
 
